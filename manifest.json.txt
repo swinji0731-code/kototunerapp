@@ -1,0 +1,12 @@
+{
+  "short_name": "天理教琴",
+  "name": "天理教 女鳴り物 琴チューナー",
+  "icons": [
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ],
+  "start_url": "index.html",
+  "background_color": "#fdf5e6",
+  "display": "standalone",
+  "theme_color": "#b22222"
+}

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天理教 琴チューナー</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b22222">
+<style>
+body { margin: 0; font-family: serif; background: #fdf5e6; text-align: center; color: #2c2c2c; }
+.container { padding: 20px; }
+h1 { color: #8b0000; margin-bottom: 5px; }
+.setting-box { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #b22222; }
+select { font-size: 18px; padding: 10px; width: 100%; border: 1px solid #b22222; }
+.freq { font-size: 40px; margin: 10px 0; }
+.meter { width: 280px; height: 140px; margin: 20px auto; position: relative; overflow: hidden; border-bottom: 2px solid #444; }
+.arc { width: 100%; height: 200%; border-radius: 50%; border: 6px solid #444; box-sizing: border-box; }
+.needle { width: 4px; height: 120px; background: #b22222; position: absolute; bottom: 0; left: 50%; transform-origin: bottom center; transform: rotate(0deg); }
+.result { font-size: 32px; font-weight: bold; margin-top: 10px; }
+.ok { color: #2e8b57; }
+#startBtn { font-size: 20px; padding: 15px 40px; background: #b22222; color: white; border: none; border-radius: 50px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>天理教 琴チューナー</h1>
+  <p>A=438Hz 基準</p>
+  <div class="setting-box">
+    <label>弦を選択</label>
+    <select id="stringSelect"><option value="auto">自動判定</option></select>
+  </div>
+  <button id="startBtn">チューナーを起動</button>
+  <div id="tunerArea" style="display:none;">
+    <div id="targetNote" style="font-weight:bold; color:#b22222;">音を鳴らしてください</div>
+    <div class="freq" id="freq">-- Hz</div>
+    <div class="meter"><div class="arc"></div><div class="needle" id="needle"></div></div>
+    <div class="result" id="result">準備完了</div>
+  </div>
+</div>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+const labels = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "斗", "為", "巾"];
+const KOTO_FREQS = [146.2, 195.1, 219.0, 232.0, 292.3, 328.1, 347.6, 390.2, 438.0, 464.0, 584.6, 656.3, 695.3];
+const stringSelect = document.getElementById("stringSelect");
+KOTO_FREQS.forEach((f, i) => {
+  const opt = document.createElement("option"); opt.value = i; opt.textContent = `${labels[i]}弦 (${f.toFixed(1)}Hz)`;
+  stringSelect.appendChild(opt);
+});
+let audioContext, analyser, buffer;
+document.getElementById("startBtn").onclick = () => {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    const source = audioContext.createMediaStreamSource(stream);
+    analyser = audioContext.createAnalyser(); analyser.fftSize = 4096;
+    source.connect(analyser); buffer = new Float32Array(analyser.fftSize);
+    document.getElementById("startBtn").style.display = "none";
+    document.getElementById("tunerArea").style.display = "block";
+    update();
+  });
+};
+function autoCorrelate(buf, rate) {
+  let rms = 0; for (let v of buf) rms += v*v;
+  if (Math.sqrt(rms/buf.length) < 0.01) return -1;
+  let bestOffset = -1, bestCorr = 0;
+  for (let offset=20; offset<1000; offset++) {
+    let corr = 0; for (let i=0; i<buf.length-offset; i++) corr += buf[i]*buf[i+offset];
+    if (corr > bestCorr) { bestCorr = corr; bestOffset = offset; }
+  }
+  return rate / bestOffset;
+}
+function update() {
+  analyser.getFloatTimeDomainData(buffer);
+  const freq = autoCorrelate(buffer, audioContext.sampleRate);
+  if (freq > 0) {
+    document.getElementById("freq").textContent = freq.toFixed(1) + " Hz";
+    let idx = stringSelect.value === "auto" ? 0 : parseInt(stringSelect.value);
+    if (stringSelect.value === "auto") {
+      let diff = Infinity; KOTO_FREQS.forEach((f, i) => { if (Math.abs(freq - f) < Math.abs(diff)) { diff = freq - f; idx = i; } });
+    }
+    const targetFreq = KOTO_FREQS[idx];
+    document.getElementById("targetNote").textContent = `${labels[idx]}弦 目標: ${targetFreq}Hz`;
+    const diff = freq - targetFreq;
+    document.getElementById("needle").style.transform = `rotate(${Math.max(-50, Math.min(50, diff * 10))}deg)`;
+    const resultEl = document.getElementById("result");
+    if (Math.abs(diff) < 0.5) { resultEl.textContent = "合致"; resultEl.className = "result ok"; }
+    else { resultEl.textContent = diff < 0 ? "低い" : "高い"; resultEl.className = "result"; }
+  }
+  requestAnimationFrame(update);
+}
+</script>
+</body>
+</html>
